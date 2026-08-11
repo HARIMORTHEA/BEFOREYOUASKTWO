@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>POS Close 정산 마감지</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<style>
+  :root{
+    --paper:#ffffff;
+    --page:#ffffff;
+    --ink:#1d1b16;
+    --ink-soft:#6b665a;
+    --line:#d8d4c6;
+    --stamp:#b23b3b;
+    --pin:#ffb1ce;
+    --pin-soft:#ffe6ef;
+    --amber:#a5762f;
+    --amber-soft:#f1e8d8;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    min-height:100vh;
+    background:var(--page);
+    background-image:radial-gradient(circle at 1px 1px, rgba(0,0,0,0.05) 1px, transparent 0);
+    background-size:18px 18px;
+    font-family:'Noto Sans KR',sans-serif;
+    color:var(--ink);
+    display:flex;
+    justify-content:center;
+    padding:32px 14px 80px;
+  }
+  .wrap{width:100%;max-width:460px;}
+  .eyebrow{
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;letter-spacing:.18em;color:var(--ink-soft);
+    text-transform:uppercase;margin:0 0 6px 2px;
+  }
+  h1{font-size:22px;margin:0 0 4px 2px;letter-spacing:-0.01em;font-weight:900;}
+  .sub{font-size:12.5px;color:var(--ink-soft);margin:0 0 22px 2px;}
+
+  .card{
+    position:relative;background:var(--paper);
+    padding:24px 20px 30px;margin-bottom:16px;
+    box-shadow:0 14px 28px -18px rgba(0,0,0,.35);
+  }
+  .card::after{
+    content:"";position:absolute;left:0;right:0;bottom:-12px;height:13px;
+    background:
+      linear-gradient(-45deg, var(--page) 6.5px, transparent 0) 0 -6.5px/13px 13px repeat-x,
+      linear-gradient(45deg, var(--page) 6.5px, transparent 0) 0 -6.5px/13px 13px repeat-x;
+  }
+  .step-tag{
+    display:inline-flex;align-items:center;gap:6px;
+    font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;
+    color:#fff;background:var(--ink);padding:3px 9px;text-transform:uppercase;
+    margin-bottom:10px;
+  }
+  .card h2{font-size:15.5px;margin:0 0 3px;font-weight:700;}
+  .card .desc{font-size:12px;color:var(--ink-soft);margin:0 0 14px;line-height:1.5;}
+
+  input[type="file"]{display:none;}
+  .shoot-btn{
+    width:100%;padding:13px;background:var(--ink);color:var(--paper);border:none;
+    font-family:'Noto Sans KR',sans-serif;font-weight:700;font-size:14px;
+    cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;
+  }
+  .shoot-btn:active{transform:translateY(1px);}
+  .shoot-btn.secondary{background:var(--pin);}
+  .thumb-row{display:flex;gap:10px;align-items:center;margin-top:12px;}
+  .thumb-row img{width:48px;height:48px;object-fit:cover;border:1px solid var(--line);}
+  .ocr-status{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--pin);}
+
+  .candidates{margin-top:14px;}
+  .cand-label{font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.08em;color:var(--ink-soft);text-transform:uppercase;margin-bottom:6px;}
+  .cand-list{display:flex;flex-direction:column;gap:5px;max-height:170px;overflow-y:auto;}
+  .cand-item{
+    display:flex;justify-content:space-between;gap:8px;
+    border:1px solid var(--line);background:#fff;padding:8px 10px;
+    font-size:12.5px;cursor:pointer;text-align:left;
+  }
+  .cand-item .cl-label{color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
+  .cand-item .cl-val{font-family:'JetBrains Mono',monospace;font-weight:700;}
+  .cand-item.selected{border-color:var(--pin);background:var(--pin-soft);}
+  .cand-item:hover{border-color:var(--ink-soft);}
+
+  .manual-field{
+    display:flex;align-items:center;justify-content:space-between;
+    margin-top:14px;padding-top:14px;border-top:1px dashed var(--line);
+  }
+  .manual-field .mlabel{font-size:13px;font-weight:700;}
+  .manual-field .mwrap{display:flex;align-items:center;gap:4px;}
+  .manual-field .mwrap span{font-family:'JetBrains Mono',monospace;color:var(--ink-soft);}
+  .manual-field input[type="number"]{
+    font-family:'JetBrains Mono',monospace;font-size:15px;text-align:right;
+    border:none;border-bottom:1px solid var(--ink);background:transparent;
+    padding:4px 2px;width:110px;color:var(--ink);
+  }
+
+  /* invoices */
+  .invoice-row{
+    display:flex;align-items:center;gap:10px;
+    border:1px solid var(--line);background:#fff;padding:8px 10px;margin-bottom:7px;
+  }
+  .invoice-row img{width:34px;height:34px;object-fit:cover;flex-shrink:0;}
+  .invoice-row .iname{flex:1;font-size:11.5px;color:var(--ink-soft);}
+  .invoice-row input[type="number"]{
+    font-family:'JetBrains Mono',monospace;font-size:13px;text-align:right;
+    border:1px solid var(--line);padding:6px 7px;width:88px;
+  }
+  .invoice-row button{border:none;background:none;color:var(--ink-soft);font-size:15px;cursor:pointer;}
+  .invoice-row button:hover{color:var(--stamp);}
+  .invoice-total{
+    display:flex;justify-content:space-between;margin-top:10px;padding-top:10px;
+    border-top:1px dashed var(--line);font-size:13px;font-weight:700;
+  }
+  .invoice-total span:last-child{font-family:'JetBrains Mono',monospace;}
+
+  /* summary */
+  .summary-card{background:var(--ink);color:var(--paper);}
+  .summary-card::after{
+    background:
+      linear-gradient(-45deg, var(--page) 6.5px, transparent 0) 0 -6.5px/13px 13px repeat-x,
+      linear-gradient(45deg, var(--page) 6.5px, transparent 0) 0 -6.5px/13px 13px repeat-x;
+  }
+  .sum-row{
+    display:flex;justify-content:space-between;align-items:baseline;
+    padding:8px 0;border-bottom:1px solid rgba(250,249,244,.14);
+    font-family:'JetBrains Mono',monospace;font-size:13.5px;
+  }
+  .sum-row .sl{font-family:'Noto Sans KR',sans-serif;font-size:12.5px;color:#c9c5b6;}
+  .sum-row.big{font-size:17px;font-weight:700;border-bottom:none;padding-top:14px;}
+  .sum-row.diff .sl{color:var(--amber-soft, #e8d9b8);}
+  .copy-btn{
+    width:100%;margin-top:16px;padding:13px;background:var(--paper);color:var(--ink);
+    border:none;font-weight:700;font-size:14px;cursor:pointer;
+  }
+  .copy-btn:active{transform:translateY(1px);}
+  .copied-msg{
+    text-align:center;font-size:11.5px;color:var(--pin-soft);margin-top:8px;
+    font-family:'JetBrains Mono',monospace;
+  }
+
+  .foot-note{text-align:center;font-size:11.5px;color:var(--ink-soft);margin-top:6px;line-height:1.6;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">SUSHIA · DAILY POS CLOSE</div>
+  <h1>정산 마감지 자동 작성</h1>
+  <p class="sub">영수증 사진들을 올리면 A~E, 인보이스 합계, 세금을 자동으로 골라 담아드려요.</p>
+
+  <!-- POS CLOSE PHOTO -->
+  <div class="card">
+    <div class="step-tag">STEP 1</div>
+    <h2>포스클로즈 영수증</h2>
+    <p class="desc">이 한 장에서 A(Total Sales), E용 Counted Cash, Total Tax를 함께 뽑아요.</p>
+    <input type="file" id="posCloseInput" accept="image/*" capture="environment">
+    <button class="shoot-btn" id="posCloseBtn">📷 포스클로즈 영수증 촬영</button>
+    <div class="thumb-row" id="posCloseThumb" style="display:none;">
+      <img id="posCloseImg">
+      <div class="ocr-status" id="posCloseStatus">인식 준비 중…</div>
+    </div>
+
+    <div class="candidates" id="posCloseCandWrap" style="display:none;">
+      <div class="cand-label">A · Total Sales 후보</div>
+      <div class="cand-list" id="candA"></div>
+      <div class="manual-field">
+        <span class="mlabel">A 값 직접 입력</span>
+        <div class="mwrap"><span>$</span><input type="number" step="0.01" id="manualA" value="0"></div>
+      </div>
+      <div class="manual-field">
+        <span class="mlabel">리펀드(환불) 금액</span>
+        <div class="mwrap"><span>$</span><input type="number" step="0.01" id="manualRefund" value="0"></div>
+      </div>
+      <p class="desc" style="margin:-6px 0 0;">리펀드가 있었던 날엔 여기에 금액을 적으면 A에서 자동으로 빼서 계산해요.</p>
+
+      <div class="cand-label" style="margin-top:16px;">E · Counted Cash Amount 후보</div>
+      <div class="cand-list" id="candE"></div>
+      <div class="manual-field">
+        <span class="mlabel">Counted Cash 직접 입력</span>
+        <div class="mwrap"><span>$</span><input type="number" step="0.01" id="manualCounted" value="0"></div>
+      </div>
+
+      <div class="cand-label" style="margin-top:16px;">Total Tax 후보</div>
+      <div class="cand-list" id="candTax"></div>
+      <div class="manual-field">
+        <span class="mlabel">Total Tax 직접 입력</span>
+        <div class="mwrap"><span>$</span><input type="number" step="0.01" id="manualTax" value="0"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TYRO -->
+  <div class="card">
+    <div class="step-tag">STEP 2</div>
+    <h2>Tyro 카드 영수증 (B)</h2>
+    <p class="desc">"Net Total"에 해당하는 값을 골라주세요.</p>
+    <input type="file" id="tyroInput" accept="image/*" capture="environment">
+    <button class="shoot-btn secondary" id="tyroBtn">📷 Tyro 영수증 촬영</button>
+    <div class="thumb-row" id="tyroThumb" style="display:none;">
+      <img id="tyroImg"><div class="ocr-status" id="tyroStatus">인식 준비 중…</div>
+    </div>
+    <div class="candidates" id="tyroCandWrap" style="display:none;">
+      <div class="cand-label">B · Net Total 후보</div>
+      <div class="cand-list" id="candB"></div>
+      <div class="manual-field">
+        <span class="mlabel">B 값 직접 입력</span>
+        <div class="mwrap"><span>$</span><input type="number" step="0.01" id="manualB" value="0"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CASH OUT -->
+  <div class="card">
+    <div class="step-tag">STEP 3</div>
+    <h2>Cash Out 영수증 (C)</h2>
+    <p class="desc">현금 지출 총액에 해당하는 값을 골라주세요.</p>
+    <input type="file" id="cashoutInput" accept="image/*" capture="environment">
+    <button class="shoot-btn secondary" id="cashoutBtn">📷 Cash Out 영수증 촬영</button>
+    <div class="thumb-row" id="cashoutThumb" style="display:none;">
+      <img id="cashoutImg"><div class="ocr-status" id="cashoutStatus">인식 준비 중…</div>
+    </div>
+    <div class="candidates" id="cashoutCandWrap" style="display:none;">
+      <div class="cand-label">C · Cash Out 후보</div>
+      <div class="cand-list" id="candC"></div>
+      <div class="manual-field">
+        <span class="mlabel">C 값 직접 입력</span>
+        <div class="mwrap"><span>$</span><input type="number" step="0.01" id="manualC" value="0"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- INVOICES -->
+  <div class="card">
+    <div class="step-tag">STEP 4</div>
+    <h2>미지급 인보이스 (여러 장)</h2>
+    <p class="desc">인보이스를 계속 추가해서 촬영하면 합계를 자동으로 더해요.</p>
+    <input type="file" id="invoiceInput" accept="image/*" capture="environment">
+    <button class="shoot-btn secondary" id="invoiceBtn">📷 인보이스 추가 촬영</button>
+    <div id="invoiceList" style="margin-top:14px;"></div>
+    <div class="invoice-total"><span>인보이스 합계</span><span id="invoiceSum">$0.00</span></div>
+  </div>
+
+  <!-- FLOAT -->
+  <div class="card">
+    <div class="step-tag">설정</div>
+    <h2>시작 현금 (플로트)</h2>
+    <p class="desc">E 계산 시 Counted Cash Amount에서 이 금액을 뺍니다.</p>
+    <div class="manual-field" style="border-top:none;margin-top:0;padding-top:0;">
+      <span class="mlabel">플로트 금액</span>
+      <div class="mwrap"><span>$</span><input type="number" step="0.01" id="floatAmount" value="1000"></div>
+    </div>
+  </div>
+
+  <!-- SUMMARY -->
+  <div class="card summary-card">
+    <div class="step-tag" style="background:var(--paper);color:var(--ink);">RESULT</div>
+    <h2 style="color:var(--paper);">정산 요약</h2>
+    <div class="sum-row"><span class="sl">A · Total Sales</span><span id="sA">$0.00</span></div>
+    <div class="sum-row"><span class="sl">리펀드(환불) 금액</span><span id="sRefund">$0.00</span></div>
+    <div class="sum-row"><span class="sl">A − 리펀드</span><span id="sANet">$0.00</span></div>
+    <div class="sum-row"><span class="sl">B · EFTPOS Total (Tyro)</span><span id="sB">$0.00</span></div>
+    <div class="sum-row"><span class="sl">C · Purchase Paid (Cash Out)</span><span id="sC">$0.00</span></div>
+    <div class="sum-row big"><span class="sl" style="color:#c9c5b6;">D · Sub Total Cash (A−리펀드−B−C)</span><span id="sD">$0.00</span></div>
+    <div class="sum-row" style="margin-top:10px;"><span class="sl">Counted Cash Amount</span><span id="sCountedRaw">$0.00</span></div>
+    <div class="sum-row big"><span class="sl" style="color:#c9c5b6;">E · Actual Counted Cash (−플로트)</span><span id="sE">$0.00</span></div>
+    <div class="sum-row big diff"><span class="sl">Difference Short/Over (E−D)</span><span id="sDiff">$0.00</span></div>
+    <div class="sum-row" style="margin-top:10px;"><span class="sl">Unpaid Invoice Total</span><span id="sInvoice">$0.00</span></div>
+    <div class="sum-row"><span class="sl">Total Tax</span><span id="sTax">$0.00</span></div>
+
+    <button class="copy-btn" id="copyBtn">결과 텍스트로 복사하기</button>
+    <div class="copied-msg" id="copiedMsg" style="display:none;">✓ 복사됐어요</div>
+  </div>
+
+  <div class="foot-note">사진과 계산은 이 브라우저 안에서만 처리돼요. 서버로 전송되지 않습니다.</div>
+</div>
+
+<script>
+// ---------- 공통 유틸 ----------
+function extractCandidates(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const numRegex = /\$?\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?/g;
+  const out = [];
+  for (const line of lines) {
+    const matches = line.match(numRegex);
+    if (!matches) continue;
+    for (const raw of matches) {
+      const value = parseFloat(raw.replace(/[$,]/g, ''));
+      if (isNaN(value)) continue;
+      let label = line.replace(raw, '').trim();
+      if (!label) label = line;
+      out.push({ label, value, line, raw });
+    }
+  }
+  // 같은 줄에서 중복 숫자는 마지막 것만 남기고, 라인 단위로 dedupe 방지 위해 그대로 반환
+  return out;
+}
+
+function fmt(n) {
+  const v = isNaN(n) ? 0 : n;
+  return '$' + v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function bestGuessIndex(candidates, keywords) {
+  for (let i = 0; i < candidates.length; i++) {
+    const l = candidates[i].label.toLowerCase();
+    if (keywords.some(k => l.includes(k))) return i;
+  }
+  return -1;
+}
+
+function renderCandList(containerId, candidates, manualInputId, guessKeywords) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = '';
+  const guessIdx = bestGuessIndex(candidates, guessKeywords);
+  candidates.forEach((c, idx) => {
+    const row = document.createElement('div');
+    row.className = 'cand-item' + (idx === guessIdx ? ' selected' : '');
+    row.innerHTML = `<span class="cl-label">${escapeHtml(c.label || '(라벨 없음)')}</span><span class="cl-val">${fmt(c.value)}</span>`;
+    row.addEventListener('click', () => {
+      container.querySelectorAll('.cand-item').forEach(el => el.classList.remove('selected'));
+      row.classList.add('selected');
+      document.getElementById(manualInputId).value = c.value;
+      recalc();
+    });
+    container.appendChild(row);
+  });
+  if (guessIdx >= 0) {
+    document.getElementById(manualInputId).value = candidates[guessIdx].value;
+  }
+}
+
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ---------- OCR 워커 (한 번만 생성해서 재사용 — 매번 새로 만들면 엄청 느려짐) ----------
+let currentStatusEl = null;
+let workerReady = null;
+function getWorker() {
+  if (!workerReady) {
+    workerReady = Tesseract.createWorker('eng', 1, {
+      logger: (m) => {
+        if (!currentStatusEl) return;
+        if (m.status === 'recognizing text') {
+          currentStatusEl.textContent = `문자 인식 중… ${Math.round(m.progress * 100)}%`;
+        } else if (m.status === 'loading tesseract core' || m.status === 'initializing tesseract' || m.status === 'loading language traineddata') {
+          currentStatusEl.textContent = '모델 준비 중… (처음 한 번만 걸려요)';
+        }
+      }
+    }).then(async (w) => {
+      // 영수증처럼 줄이 듬성듬성한 문서에 적합한 페이지 분석 모드
+      await w.setParameters({ tessedit_pageseg_mode: '6' });
+      return w;
+    });
+  }
+  return workerReady;
+}
+// 페이지 로드되자마자 모델을 미리 받아둠 (첫 촬영 때 대기시간 숨기기)
+getWorker().catch(() => {});
+
+// Otsu 임계값: 그레이스케일 히스토그램에서 배경/글자를 가장 잘 가르는 경계값 찾기
+function otsuThreshold(hist, total) {
+  let sum = 0;
+  for (let t = 0; t < 256; t++) sum += t * hist[t];
+  let sumB = 0, wB = 0, varMax = 0, threshold = 127;
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t];
+    if (wB === 0) continue;
+    const wF = total - wB;
+    if (wF === 0) break;
+    sumB += t * hist[t];
+    const mB = sumB / wB;
+    const mF = (sum - sumB) / wF;
+    const between = wB * wF * (mB - mF) * (mB - mF);
+    if (between > varMax) { varMax = between; threshold = t; }
+  }
+  return threshold;
+}
+
+// 촬영한 사진을 축소 + 흑백 이진화해서 OCR이 읽기 쉬운 형태로 만듦
+async function preprocessImage(file, maxDim = 1600) {
+  const origUrl = URL.createObjectURL(file);
+  const img = await new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = origUrl;
+  });
+
+  let { width, height } = img;
+  const scale = Math.min(1, maxDim / Math.max(width, height));
+  width = Math.max(1, Math.round(width * scale));
+  height = Math.max(1, Math.round(height * scale));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, width, height);
+
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const d = imageData.data;
+  const n = width * height;
+  const gray = new Uint8ClampedArray(n);
+  const hist = new Array(256).fill(0);
+
+  for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+    const g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    gray[p] = g;
+    hist[g | 0]++;
+  }
+
+  const threshold = otsuThreshold(hist, n);
+
+  for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+    const v = gray[p] > threshold ? 255 : 0;
+    d[i] = d[i + 1] = d[i + 2] = v;
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+  return { blob, origUrl };
+}
+
+async function runOcr(file, statusEl) {
+  currentStatusEl = statusEl;
+  statusEl.textContent = '이미지 정리 중…';
+  let blob, origUrl;
+  try {
+    const prep = await preprocessImage(file);
+    blob = prep.blob;
+    origUrl = prep.origUrl;
+  } catch (e) {
+    console.error('전처리 실패, 원본으로 진행', e);
+    blob = file;
+    origUrl = URL.createObjectURL(file);
+  }
+  try {
+    const worker = await getWorker();
+    statusEl.textContent = '문자 인식 중…';
+    const { data } = await worker.recognize(blob);
+    statusEl.textContent = '인식 완료 — 후보를 골라주세요';
+    return { text: data.text, url: origUrl };
+  } catch (err) {
+    statusEl.textContent = '인식 실패 — 직접 입력해 주세요';
+    console.error(err);
+    return { text: '', url: origUrl };
+  } finally {
+    if (currentStatusEl === statusEl) currentStatusEl = null;
+  }
+}
+
+// ---------- STEP 1: POS CLOSE ----------
+document.getElementById('posCloseBtn').addEventListener('click', () => document.getElementById('posCloseInput').click());
+document.getElementById('posCloseInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  document.getElementById('posCloseThumb').style.display = 'flex';
+  document.getElementById('posCloseImg').src = URL.createObjectURL(file);
+  const statusEl = document.getElementById('posCloseStatus');
+  const { text } = await runOcr(file, statusEl);
+  const candidates = extractCandidates(text);
+  document.getElementById('posCloseCandWrap').style.display = 'block';
+  renderCandList('candA', candidates, 'manualA', ['total sales']);
+  renderCandList('candE', candidates, 'manualCounted', ['counted cash']);
+  renderCandList('candTax', candidates, 'manualTax', ['total tax']);
+  recalc();
+});
+
+// ---------- STEP 2: TYRO ----------
+document.getElementById('tyroBtn').addEventListener('click', () => document.getElementById('tyroInput').click());
+document.getElementById('tyroInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  document.getElementById('tyroThumb').style.display = 'flex';
+  document.getElementById('tyroImg').src = URL.createObjectURL(file);
+  const statusEl = document.getElementById('tyroStatus');
+  const { text } = await runOcr(file, statusEl);
+  const candidates = extractCandidates(text);
+  document.getElementById('tyroCandWrap').style.display = 'block';
+  renderCandList('candB', candidates, 'manualB', ['net total']);
+  recalc();
+});
+
+// ---------- STEP 3: CASH OUT ----------
+document.getElementById('cashoutBtn').addEventListener('click', () => document.getElementById('cashoutInput').click());
+document.getElementById('cashoutInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  document.getElementById('cashoutThumb').style.display = 'flex';
+  document.getElementById('cashoutImg').src = URL.createObjectURL(file);
+  const statusEl = document.getElementById('cashoutStatus');
+  const { text } = await runOcr(file, statusEl);
+  const candidates = extractCandidates(text);
+  document.getElementById('cashoutCandWrap').style.display = 'block';
+  renderCandList('candC', candidates, 'manualC', ['total', 'cash out']);
+  recalc();
+});
+
+// ---------- STEP 4: INVOICES ----------
+let invoices = []; // {id, imgUrl, value}
+let invoiceSeq = 0;
+
+document.getElementById('invoiceBtn').addEventListener('click', () => document.getElementById('invoiceInput').click());
+document.getElementById('invoiceInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  const id = invoiceSeq++;
+  const imgUrl = URL.createObjectURL(file);
+  const inv = { id, imgUrl, value: 0, statusText: '인식 중…' };
+  invoices.push(inv);
+  renderInvoices();
+
+  const { text } = await runOcr(file, { set textContent(v) { inv.statusText = v; renderInvoices(); } });
+  const candidates = extractCandidates(text);
+  const guessIdx = bestGuessIndex(candidates, ['total', 'amount due', 'balance due']);
+  inv.value = guessIdx >= 0 ? candidates[guessIdx].value : (candidates.length ? Math.max(...candidates.map(c => c.value)) : 0);
+  inv.statusText = '완료';
+  renderInvoices();
+  recalc();
+  e.target.value = '';
+});
+
+function renderInvoices() {
+  const list = document.getElementById('invoiceList');
+  list.innerHTML = '';
+  invoices.forEach((inv, idx) => {
+    const row = document.createElement('div');
+    row.className = 'invoice-row';
+    row.innerHTML = `
+      <img src="${inv.imgUrl}">
+      <span class="iname">인보이스 ${idx + 1} · ${escapeHtml(inv.statusText)}</span>
+      <input type="number" step="0.01" value="${inv.value}" data-id="${inv.id}">
+      <button data-id="${inv.id}">✕</button>
+    `;
+    list.appendChild(row);
+  });
+  list.querySelectorAll('input').forEach(inp => {
+    inp.addEventListener('input', (e) => {
+      const id = +e.target.dataset.id;
+      const inv = invoices.find(i => i.id === id);
+      if (inv) inv.value = parseFloat(e.target.value) || 0;
+      recalc();
+    });
+  });
+  list.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const id = +e.target.dataset.id;
+      invoices = invoices.filter(i => i.id !== id);
+      renderInvoices();
+      recalc();
+    });
+  });
+  recalc();
+}
+
+// ---------- 계산 ----------
+['manualA','manualRefund','manualB','manualC','manualCounted','manualTax','floatAmount'].forEach(id => {
+  document.getElementById(id).addEventListener('input', recalc);
+});
+
+function recalc() {
+  const A = parseFloat(document.getElementById('manualA').value) || 0;
+  const refund = parseFloat(document.getElementById('manualRefund').value) || 0;
+  const B = parseFloat(document.getElementById('manualB').value) || 0;
+  const C = parseFloat(document.getElementById('manualC').value) || 0;
+  const countedRaw = parseFloat(document.getElementById('manualCounted').value) || 0;
+  const tax = parseFloat(document.getElementById('manualTax').value) || 0;
+  const floatAmt = parseFloat(document.getElementById('floatAmount').value) || 0;
+
+  const aNet = A - refund;
+  const D = aNet - B - C;
+  const E = countedRaw - floatAmt;
+  const diff = E - D;
+  const invoiceSum = invoices.reduce((s, i) => s + (i.value || 0), 0);
+
+  document.getElementById('sA').textContent = fmt(A);
+  document.getElementById('sRefund').textContent = fmt(refund);
+  document.getElementById('sANet').textContent = fmt(aNet);
+  document.getElementById('sB').textContent = fmt(B);
+  document.getElementById('sC').textContent = fmt(C);
+  document.getElementById('sD').textContent = fmt(D);
+  document.getElementById('sCountedRaw').textContent = fmt(countedRaw);
+  document.getElementById('sE').textContent = fmt(E);
+  document.getElementById('sDiff').textContent = (diff >= 0 ? '+' : '') + fmt(diff).replace('$-','-$');
+  document.getElementById('sInvoice').textContent = fmt(invoiceSum);
+  document.getElementById('sTax').textContent = fmt(tax);
+  document.getElementById('invoiceSum').textContent = fmt(invoiceSum);
+}
+
+// ---------- 복사 ----------
+document.getElementById('copyBtn').addEventListener('click', async () => {
+  const lines = [
+    `A (Total Sales): ${document.getElementById('sA').textContent}`,
+    `Refund (리펀드): ${document.getElementById('sRefund').textContent}`,
+    `A - Refund: ${document.getElementById('sANet').textContent}`,
+    `B (EFTPOS/Tyro Net Total): ${document.getElementById('sB').textContent}`,
+    `C (Purchase Paid/Cash Out): ${document.getElementById('sC').textContent}`,
+    `D (Sub Total Cash, A-Refund-B-C): ${document.getElementById('sD').textContent}`,
+    `Counted Cash Amount: ${document.getElementById('sCountedRaw').textContent}`,
+    `E (Actual Counted Cash, -플로트): ${document.getElementById('sE').textContent}`,
+    `Difference Short/Over (E-D): ${document.getElementById('sDiff').textContent}`,
+    `Unpaid Invoice Total: ${document.getElementById('sInvoice').textContent}`,
+    `Total Tax: ${document.getElementById('sTax').textContent}`,
+  ].join('\n');
+  try {
+    await navigator.clipboard.writeText(lines);
+    const msg = document.getElementById('copiedMsg');
+    msg.style.display = 'block';
+    setTimeout(() => msg.style.display = 'none', 2000);
+  } catch (e) {
+    alert(lines);
+  }
+});
+
+recalc();
+</script>
+</body>
+</html>
